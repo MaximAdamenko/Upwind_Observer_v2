@@ -1,10 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import Base, engine
 from app.routers import results, scan
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Upwind Observer", version="2.0.0")
 

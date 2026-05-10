@@ -27,7 +27,7 @@ function onGmailMessage(e) {
     const resp = UrlFetchApp.fetch(`${API_URL}/v1/scan`, {
       method: "post",
       contentType: "application/json",
-      headers: { Authorization: `Bearer ${API_KEY}` },
+      headers: { Authorization: `Bearer ${API_KEY}`, "ngrok-skip-browser-warning": "1" },
       payload: payload,
       muteHttpExceptions: true,
     });
@@ -58,7 +58,7 @@ function showReasoning() {
   for (let attempt = 0; attempt < 10; attempt++) {
     const resp = UrlFetchApp.fetch(`${API_URL}/v1/results/${jobId}`, {
       method: "get",
-      headers: { Authorization: `Bearer ${API_KEY}` },
+      headers: { Authorization: `Bearer ${API_KEY}`, "ngrok-skip-browser-warning": "1" },
       muteHttpExceptions: true,
     });
     const data = JSON.parse(resp.getContentText());

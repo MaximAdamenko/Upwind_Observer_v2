@@ -1,18 +1,13 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, JSON, String
-from app.database import Base
 
 
-def _now():
-    return datetime.now(timezone.utc)
-
-
-class Job(Base):
-    __tablename__ = "jobs"
-
-    id = Column(String, primary_key=True, index=True)
-    status = Column(String, default="pending")  # pending | completed | failed
-    report = Column(JSON, nullable=True)
-    error = Column(String, nullable=True)
-    created_at = Column(DateTime, default=_now)
-    updated_at = Column(DateTime, default=_now, onupdate=_now)
+def job_doc(job_id: str) -> dict:
+    now = datetime.now(timezone.utc)
+    return {
+        "_id": job_id,
+        "status": "pending",
+        "report": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    }

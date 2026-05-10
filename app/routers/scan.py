@@ -1,12 +1,13 @@
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from sqlalchemy.orm import Session
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.auth import verify_api_key
-from app.database import SessionLocal, get_db
-from app.models import Job
+from app.database import get_jobs_collection
+from app.models import job_doc
 from app.schemas import ScanRequest, ScanResponse
 from app.tasks import process_email
 
@@ -15,34 +16,29 @@ router = APIRouter()
 
 
 async def _run_job(job_id: str, data: dict) -> None:
-    db: Session = SessionLocal()
+    col = get_jobs_collection()
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
         report = await process_email(data)
-        job.status = "completed"
-        job.report = report
-        db.commit()
+        await col.update_one(
+            {"_id": job_id},
+            {"$set": {"status": "completed", "report": report, "updated_at": datetime.now(timezone.utc)}},
+        )
     except Exception as exc:
         logger.exception("Job %s failed", job_id)
-        try:
-            job.status = "failed"
-            job.error = str(exc)
-            db.commit()
-        except Exception:
-            pass
-    finally:
-        db.close()
+        await col.update_one(
+            {"_id": job_id},
+            {"$set": {"status": "failed", "error": str(exc), "updated_at": datetime.now(timezone.utc)}},
+        )
 
 
 @router.post("/scan", response_model=ScanResponse)
 async def submit_scan(
     request: ScanRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    col: AsyncIOMotorCollection = Depends(get_jobs_collection),
     _: str = Depends(verify_api_key),
 ) -> ScanResponse:
     job_id = str(uuid.uuid4())
-    db.add(Job(id=job_id, status="pending"))
-    db.commit()
+    await col.insert_one(job_doc(job_id))
     background_tasks.add_task(_run_job, job_id, request.model_dump())
     return ScanResponse(job_id=job_id)

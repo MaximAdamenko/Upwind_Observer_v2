@@ -1,21 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.auth import verify_api_key
-from app.database import get_db
-from app.models import Job
+from app.database import get_jobs_collection
 from app.schemas import ResultResponse
 
 router = APIRouter()
 
 
 @router.get("/results/{job_id}", response_model=ResultResponse)
-def get_result(
+async def get_result(
     job_id: str,
-    db: Session = Depends(get_db),
+    col: AsyncIOMotorCollection = Depends(get_jobs_collection),
     _: str = Depends(verify_api_key),
 ) -> ResultResponse:
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = await col.find_one({"_id": job_id})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return ResultResponse(status=job.status, report=job.report, error=job.error)
+    return ResultResponse(status=job["status"], report=job.get("report"), error=job.get("error"))

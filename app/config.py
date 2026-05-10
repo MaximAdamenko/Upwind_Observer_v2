@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     CLAUDE_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-4-6"
     VIRUS_TOTAL_KEY: str = ""
-    DATABASE_URL: str = "sqlite:///./upwind.db"
+    MONGODB_URI: str = "mongodb://localhost:27017"
+    MONGODB_DB: str = "upwind_observer"
 
 
 settings = Settings()
