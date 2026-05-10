@@ -115,45 +115,64 @@ function _errorCard(message) {
 
 function _reportCard(report) {
   const score = report.score || 0;
+  const risk = (report.risk_level || "low").toUpperCase();
   const riskEmoji = score < 30 ? "🟢" : score < 70 ? "🟡" : "🔴";
+
+  const classLabel = {
+    "Commercial": "📧 Commercial — looks like a regular marketing or newsletter email.",
+    "Credential Stealing": "🎣 Credential Stealing — this email is trying to steal your login or personal info.",
+    "Malware": "☠️ Malware — this email may be delivering malicious software or links.",
+  }[report.ai_classification] || "❓ Unknown — could not determine email type.";
+
+  const authLine =
+    `DMARC: ${report.dmarc_status}  |  SPF: ${report.spf_status}  |  DKIM: ${report.dkim_status}`;
+
   const iocs = report.iocs || {};
+  const allIocs = [...(iocs.ips || []), ...(iocs.urls || [])].slice(0, 8);
   const vtHits = (report.virustotal_hits || []).filter(h => h.malicious);
 
-  const section = CardService.newCardSection()
+  // ── Overview section ──────────────────────────────────────────────────────
+  const overview = CardService.newCardSection()
+    .setHeader("Overview")
     .addWidget(CardService.newKeyValue()
       .setTopLabel("Threat Score")
-      .setContent(`${riskEmoji} ${score}/100 — ${(report.risk_level || "").toUpperCase()}`))
+      .setContent(`${riskEmoji} ${score} / 100 — ${risk}`))
     .addWidget(CardService.newKeyValue()
-      .setTopLabel("AI Classification")
-      .setContent(report.ai_classification || "—"))
+      .setTopLabel("Email Type")
+      .setContent(classLabel))
     .addWidget(CardService.newKeyValue()
-      .setTopLabel("DMARC / SPF / DKIM")
-      .setContent(`${report.dmarc_status} / ${report.spf_status} / ${report.dkim_status}`))
-    .addWidget(CardService.newTextParagraph()
-      .setText("<b>AI Reasoning:</b> " + (report.ai_reasoning || "—")));
+      .setTopLabel("Email Authentication")
+      .setContent(authLine));
 
-  if ((iocs.ips || []).length || (iocs.urls || []).length) {
-    section.addWidget(CardService.newKeyValue()
-      .setTopLabel("IOCs Extracted")
-      .setContent(
-        [...(iocs.ips || []), ...(iocs.urls || [])].slice(0, 10).join("\n") || "None"
-      ));
+  // ── What we found section ─────────────────────────────────────────────────
+  const findings = CardService.newCardSection()
+    .setHeader("What We Found")
+    .addWidget(CardService.newTextParagraph()
+      .setText(report.ai_reasoning || "No additional details available."));
+
+  if (allIocs.length) {
+    findings.addWidget(CardService.newKeyValue()
+      .setTopLabel(`Suspicious Links / IPs (${allIocs.length})`)
+      .setContent(allIocs.join("\n")));
   }
 
   if (vtHits.length) {
-    section.addWidget(CardService.newKeyValue()
-      .setTopLabel("VirusTotal Hits")
-      .setContent(vtHits.map(h => `${h.item} (${h.detections} engines)`).join("\n")));
+    findings.addWidget(CardService.newKeyValue()
+      .setTopLabel(`⚠️ VirusTotal Flagged (${vtHits.length})`)
+      .setContent(vtHits.map(h => `${h.item} — ${h.detections} engines`).join("\n")));
   }
 
   if ((report.attachment_hashes || []).length) {
-    section.addWidget(CardService.newKeyValue()
+    findings.addWidget(CardService.newKeyValue()
       .setTopLabel("Attachment SHA-256")
       .setContent(report.attachment_hashes.join("\n")));
   }
 
   return CardService.newCardBuilder()
-    .setHeader(CardService.newCardHeader().setTitle("Upwind Observer").setSubtitle("Threat Report"))
-    .addSection(section)
+    .setHeader(CardService.newCardHeader()
+      .setTitle("Upwind Observer")
+      .setSubtitle("Threat Report"))
+    .addSection(overview)
+    .addSection(findings)
     .build();
 }

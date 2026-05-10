@@ -47,16 +47,18 @@ async def _classify_with_claude(body: str) -> tuple[str, str]:
         messages=[{"role": "user", "content": prompt}],
     )
     raw = message.content[0].text.strip()
+    # Strip markdown code fences if Claude wrapped the JSON
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
     try:
-        result = json.loads(raw)
+        result = json.loads(cleaned)
         return result["classification"], result["reasoning"]
     except Exception:
-        lower = raw.lower()
+        lower = cleaned.lower()
         if "malware" in lower:
-            return "Malware", raw
+            return "Malware", cleaned
         if "credential" in lower:
-            return "Credential Stealing", raw
-        return "Commercial", raw
+            return "Credential Stealing", cleaned
+        return "Commercial", cleaned
 
 
 def _score(dmarc: str, spf: str, dkim: str, classification: str, vt_hits: list) -> int:
