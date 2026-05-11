@@ -101,7 +101,6 @@ The AI reasoning is shown in plain English in the "What We Found" section of the
 - A [MongoDB Atlas](https://www.mongodb.com/atlas) cluster (free tier works)
 - An [Anthropic](https://console.anthropic.com/) API key
 - A [VirusTotal](https://www.virustotal.com/gui/join-us) API key
-- [ngrok](https://ngrok.com/) for tunnelling to your local machine
 
 ### Run locally
 
@@ -121,9 +120,6 @@ pip install -r requirements.txt
 
 # 5. Start the server
 python3 run.py
-
-# 6. In a second terminal — expose it publicly for GAS
-ngrok http 8000
 ```
 
 ---
