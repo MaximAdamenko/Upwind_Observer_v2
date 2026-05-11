@@ -1,6 +1,5 @@
-const PROPS = PropertiesService.getScriptProperties();
-const API_URL = PROPS.getProperty("API_URL") || "http://localhost:8000";
-const API_KEY = PROPS.getProperty("API_KEY") || "";
+const API_URL = "https://api.yourdomain.com";
+const API_KEY = "upwind-obs-2026-xK9mQ3vR7tY2wZ5p";
 
 // Entry point — triggered when a Gmail message is opened
 function onGmailMessage(e) {
@@ -27,7 +26,7 @@ function onGmailMessage(e) {
     const resp = UrlFetchApp.fetch(`${API_URL}/v1/scan`, {
       method: "post",
       contentType: "application/json",
-      headers: { Authorization: `Bearer ${API_KEY}`, "ngrok-skip-browser-warning": "1" },
+      headers: { Authorization: `Bearer ${API_KEY}` },
       payload: payload,
       muteHttpExceptions: true,
     });
@@ -58,7 +57,7 @@ function showReasoning() {
   for (let attempt = 0; attempt < 10; attempt++) {
     const resp = UrlFetchApp.fetch(`${API_URL}/v1/results/${jobId}`, {
       method: "get",
-      headers: { Authorization: `Bearer ${API_KEY}`, "ngrok-skip-browser-warning": "1" },
+      headers: { Authorization: `Bearer ${API_KEY}` },
       muteHttpExceptions: true,
     });
     const data = JSON.parse(resp.getContentText());
