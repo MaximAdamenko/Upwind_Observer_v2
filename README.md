@@ -116,7 +116,7 @@ source .venv/bin/activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Create your .env file (see Configure Environment Variables below)
+# 4. Create your .env file and fill in your API keys
 
 # 5. Start the server
 python3 run.py
@@ -129,90 +129,6 @@ python3 run.py
 **Amazon EC2 (Elastic Compute Cloud)** is a cloud service that gives you a virtual server running 24/7 in AWS's infrastructure. Unlike your local machine, an EC2 instance has a permanent public IP address and is always reachable from the internet — making it the ideal host for the Upwind Observer backend.
 
 In this project, EC2 is used to keep the FastAPI backend continuously available so that every Gmail user who installs the add-on from the Marketplace can send their scan requests to the same reliable endpoint. The server runs on **Ubuntu Linux**, sits behind an **nginx reverse proxy** that handles HTTPS (required by Google Workspace Marketplace), and is managed by **systemd** so it automatically restarts if it ever crashes or the machine reboots.
-
----
-
-## Configure Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-# Shared secret between your backend and Google Apps Script
-API_KEY=your-secret-key-here
-
-# Anthropic Claude API key — https://console.anthropic.com/
-CLAUDE_API_KEY=sk-ant-...
-
-# Claude model to use for email classification
-CLAUDE_MODEL=claude-sonnet-4-6
-
-# VirusTotal API key — https://www.virustotal.com/gui/join-us
-VIRUS_TOTAL_KEY=your-vt-key-here
-
-# MongoDB Atlas connection string
-MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/
-MONGODB_DB=upwind_observer
-```
-
-> **Never commit your `.env` file.** It is already listed in `.gitignore`.
-
----
-
-## Google Workspace Marketplace Publishing
-
-This is how Upwind Observer goes from a personal script to a publicly installable add-on that any Gmail user can install in one click.
-
-### Step 1 — Create a Google Cloud Project
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Click **New Project** → name it `Upwind Observer`
-3. Enable the following APIs:
-   - **Gmail API**
-   - **Google Workspace Add-ons API**
-
-### Step 2 — Link your Apps Script project
-
-1. Open your Apps Script project at [script.google.com](https://script.google.com)
-2. Go to **Project Settings** → **Google Cloud Platform (GCP) Project**
-3. Enter your GCP project number and click **Set project**
-
-### Step 3 — Configure the OAuth Consent Screen
-
-1. In GCP Console → **APIs & Services → OAuth consent screen**
-2. Set User Type to **External**
-3. Fill in:
-   - App name: `Upwind Observer`
-   - User support email: your email
-   - Authorized domain: `yourdomain.com`
-   - Developer contact: your email
-4. Add scopes:
-   - `https://www.googleapis.com/auth/gmail.readonly`
-   - `https://www.googleapis.com/auth/gmail.addons.execute`
-   - `https://www.googleapis.com/auth/script.external_request`
-5. Submit for **verification** (required for public apps — Google review takes a few days)
-
-### Step 4 — Deploy the Add-on
-
-1. In Apps Script → **Deploy → New deployment**
-2. Type: **Add-on**
-3. Click **Deploy** — copy the **Deployment ID**
-
-### Step 5 — Create the Marketplace listing
-
-1. In GCP Console → **APIs & Services → Google Workspace Marketplace SDK**
-2. Enable the SDK, then go to **App Configuration**:
-   - App name: `Upwind Observer`
-   - Description: *(your description)*
-   - App type: **Gmail Add-on**
-   - OAuth Client ID: *(from your OAuth setup)*
-   - Deployment ID: *(from Step 4)*
-3. Go to **Store Listing** → upload screenshots and fill in the listing details
-4. Set Visibility to **Public**
-5. Click **Submit for review**
-
-> Google's review process typically takes **3–7 business days** for new public add-ons.
-
-Once approved, your add-on will appear on the Marketplace and any Gmail user can install it at [workspace.google.com/marketplace](https://workspace.google.com/marketplace).
 
 ---
 
