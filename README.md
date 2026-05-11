@@ -1,6 +1,6 @@
 # Upwind Observer
 
-An AI-powered email threat analysis tool that runs as a **Gmail Add-on**. Every time you open an email, Upwind Observer silently inspects the headers, body, links, and attachments — then produces a scored threat report powered by Claude AI and VirusTotal directly inside your Gmail sidebar.
+An AI-powered email threat analysis tool that runs as a **Gmail Add-on**, available on the Google Workspace Marketplace. Every time you open an email, Upwind Observer silently inspects the headers, body, links, and attachments — then produces a scored threat report powered by Claude AI and VirusTotal directly inside your Gmail sidebar.
 
 ---
 
@@ -31,7 +31,7 @@ The plain-text email body is sent to **Claude claude-sonnet-4-6** (Anthropic) wi
 | **Credential Stealing** | Phishing attempts targeting passwords, accounts, or personal data |
 | **Malware** | Emails delivering or linking to malicious software |
 
-The AI reasoning is shown verbatim in the "What We Found" section of the report.
+The AI reasoning is shown in plain English in the "What We Found" section of the report.
 
 ---
 
@@ -44,7 +44,7 @@ The AI reasoning is shown verbatim in the "What We Found" section of the report.
 │  User opens an email                                            │
 │       │                                                         │
 │       ▼                                                         │
-│  Google Apps Script (Code.gs)                                   │
+│  Google Apps Script (Code.gs)          [Marketplace Add-on]    │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  onGmailMessage()                                        │   │
 │  │  • Reads raw email, body, attachments via GmailApp       │   │
@@ -55,27 +55,34 @@ The AI reasoning is shown verbatim in the "What We Found" section of the report.
 │  └─────────────────────────────────────────────────│──│────┘   │
 └────────────────────────────────────────────────────│──│────────┘
                                                      │  │
-                                            HTTP over ngrok / public URL
+                                              HTTPS (port 443)
                                                      │  │
 ┌────────────────────────────────────────────────────▼──▼────────┐
-│  FastAPI Backend (Python)                                       │
+│  AWS EC2 (Ubuntu)                                               │
 │                                                                 │
-│  POST /v1/scan                                                  │
-│  ├── auth.py          Validates Bearer token (API_KEY)          │
-│  ├── routers/scan.py  Creates job doc in MongoDB, returns       │
-│  │                    job_id immediately                        │
-│  └── tasks.py         Runs in background:                      │
-│       ├── email_parser.py      Parse raw RFC 2822 headers       │
-│       ├── security_signals.py  Extract DMARC / SPF / DKIM      │
-│       ├── _extract_iocs()      Regex → URLs + IPs               │
-│       ├── _classify_with_claude()  → Anthropic API             │
-│       ├── virustotal.check_url()   → VirusTotal API (URLs)      │
-│       ├── virustotal.check_hash()  → VirusTotal API (hashes)    │
-│       └── _score()             Compute 0-100 threat score       │
-│                                                                 │
-│  GET /v1/results/{job_id}                                       │
-│  └── routers/results.py   Read job document from MongoDB        │
-│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  nginx  (reverse proxy, SSL termination via Let's        │    │
+│  │         Encrypt, port 443 → localhost:8000)              │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                   │
+│  ┌──────────────────────────▼──────────────────────────────┐    │
+│  │  FastAPI + Uvicorn  (systemd service, port 8000)         │    │
+│  │                                                          │    │
+│  │  POST /v1/scan                                           │    │
+│  │  ├── auth.py           Validates Bearer token (API_KEY)  │    │
+│  │  ├── routers/scan.py   Creates job in MongoDB            │    │
+│  │  └── tasks.py          Background analysis pipeline:     │    │
+│  │       ├── email_parser.py      Parse RFC 2822 headers    │    │
+│  │       ├── security_signals.py  DMARC / SPF / DKIM        │    │
+│  │       ├── _extract_iocs()      Regex → URLs + IPs        │    │
+│  │       ├── _classify_with_claude() → Anthropic API        │    │
+│  │       ├── virustotal.check_url()  → VirusTotal API       │    │
+│  │       ├── virustotal.check_hash() → VirusTotal API       │    │
+│  │       └── _score()     Compute 0–100 threat score        │    │
+│  │                                                          │    │
+│  │  GET /v1/results/{job_id}                                │    │
+│  │  └── routers/results.py  Read job from MongoDB           │    │
+│  └──────────────────────────────────────────────────────────┘    │
 └────────────────────────────┬────────────────────────────────────┘
                              │
               ┌──────────────┼──────────────┐
@@ -87,16 +94,16 @@ The AI reasoning is shown verbatim in the "What We Found" section of the report.
 
 ---
 
-## Installation
+## Local Development
 
 ### Prerequisites
 - Python 3.12+
 - A [MongoDB Atlas](https://www.mongodb.com/atlas) cluster (free tier works)
 - An [Anthropic](https://console.anthropic.com/) API key
 - A [VirusTotal](https://www.virustotal.com/gui/join-us) API key
-- [ngrok](https://ngrok.com/) for local tunnelling (or any public server)
+- [ngrok](https://ngrok.com/) for tunnelling to your local machine
 
-### Clone and run
+### Run locally
 
 ```bash
 # 1. Clone the repo
@@ -105,25 +112,140 @@ cd Upwind_Observer_v2
 
 # 2. Create and activate a virtual environment
 python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Create your .env file (see next section)
-cp .env.example .env             # then fill in your values
+# 4. Create your .env file (see Configure Environment Variables below)
 
 # 5. Start the server
 python3 run.py
+
+# 6. In a second terminal — expose it publicly for GAS
+ngrok http 8000
 ```
 
-The API will be available at `http://localhost:8000`. Visit `/docs` for the interactive Swagger UI.
+---
+
+## Production Deployment (AWS EC2)
+
+The production backend runs on an **EC2 instance** behind **nginx** with a **Let's Encrypt SSL certificate**. Google Workspace Marketplace requires HTTPS — a plain IP or HTTP URL will not work.
+
+### Step 1 — Launch an EC2 instance
+
+1. Go to **AWS Console → EC2 → Launch Instance**
+2. Choose **Ubuntu Server 22.04 LTS**
+3. Instance type: **t3.small** (recommended) or t2.micro (free tier)
+4. Security Group — open these inbound ports:
+
+| Port | Protocol | Source | Purpose |
+|------|----------|--------|---------|
+| 22 | TCP | Your IP | SSH access |
+| 80 | TCP | 0.0.0.0/0 | HTTP (Let's Encrypt challenge) |
+| 443 | TCP | 0.0.0.0/0 | HTTPS (production traffic) |
+
+5. Create or select a key pair and download the `.pem` file
+6. Note the **Public IPv4 address** of your instance
+
+### Step 2 — Point a domain at the instance
+
+You need a domain name for HTTPS (Let's Encrypt cannot issue certs for bare IP addresses).
+
+- Buy a cheap domain (e.g. Namecheap, Google Domains) or use a free subdomain service
+- Create an **A record** pointing `api.yourdomain.com` → your EC2 public IP
+- Wait for DNS to propagate (usually under 5 minutes)
+
+### Step 3 — Set up the server
+
+SSH into your instance and run the following:
+
+```bash
+ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# System packages
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip python3-venv nginx certbot python3-certbot-nginx git
+
+# Clone the repo
+git clone https://github.com/MaximAdamenko/Upwind_Observer_v2.git
+cd Upwind_Observer_v2
+
+# Virtual environment + dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Create your .env file with production values
+nano .env
+```
+
+### Step 4 — Configure nginx
+
+Create `/etc/nginx/sites-available/upwind`:
+
+```nginx
+server {
+    listen 80;
+    server_name api.yourdomain.com;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/upwind /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# Issue the SSL certificate
+sudo certbot --nginx -d api.yourdomain.com
+```
+
+Certbot will automatically edit your nginx config to handle HTTPS and set up auto-renewal.
+
+### Step 5 — Run the backend as a systemd service
+
+Create `/etc/systemd/system/upwind.service`:
+
+```ini
+[Unit]
+Description=Upwind Observer API
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Upwind_Observer_v2
+EnvironmentFile=/home/ubuntu/Upwind_Observer_v2/.env
+ExecStart=/home/ubuntu/Upwind_Observer_v2/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable upwind
+sudo systemctl start upwind
+
+# Verify it's running
+sudo systemctl status upwind
+curl https://api.yourdomain.com/
+# → {"status":"ok","service":"Upwind Observer"}
+```
 
 ---
 
 ## Configure Environment Variables
 
-Create a `.env` file in the project root with the following keys:
+Create a `.env` file in the project root:
 
 ```env
 # Shared secret between your backend and Google Apps Script
@@ -144,6 +266,64 @@ MONGODB_DB=upwind_observer
 ```
 
 > **Never commit your `.env` file.** It is already listed in `.gitignore`.
+
+---
+
+## Google Workspace Marketplace Publishing
+
+This is how Upwind Observer goes from a personal script to a publicly installable add-on that any Gmail user can install in one click.
+
+### Step 1 — Create a Google Cloud Project
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Click **New Project** → name it `Upwind Observer`
+3. Enable the following APIs:
+   - **Gmail API**
+   - **Google Workspace Add-ons API**
+
+### Step 2 — Link your Apps Script project
+
+1. Open your Apps Script project at [script.google.com](https://script.google.com)
+2. Go to **Project Settings** → **Google Cloud Platform (GCP) Project**
+3. Enter your GCP project number and click **Set project**
+
+### Step 3 — Configure the OAuth Consent Screen
+
+1. In GCP Console → **APIs & Services → OAuth consent screen**
+2. Set User Type to **External**
+3. Fill in:
+   - App name: `Upwind Observer`
+   - User support email: your email
+   - Authorized domain: `yourdomain.com`
+   - Developer contact: your email
+4. Add scopes:
+   - `https://www.googleapis.com/auth/gmail.readonly`
+   - `https://www.googleapis.com/auth/gmail.addons.execute`
+   - `https://www.googleapis.com/auth/script.external_request`
+5. Submit for **verification** (required for public apps — Google review takes a few days)
+
+### Step 4 — Deploy the Add-on
+
+1. In Apps Script → **Deploy → New deployment**
+2. Type: **Add-on**
+3. Click **Deploy** — copy the **Deployment ID**
+
+### Step 5 — Create the Marketplace listing
+
+1. In GCP Console → **APIs & Services → Google Workspace Marketplace SDK**
+2. Enable the SDK, then go to **App Configuration**:
+   - App name: `Upwind Observer`
+   - Description: *(your description)*
+   - App type: **Gmail Add-on**
+   - OAuth Client ID: *(from your OAuth setup)*
+   - Deployment ID: *(from Step 4)*
+3. Go to **Store Listing** → upload screenshots and fill in the listing details
+4. Set Visibility to **Public**
+5. Click **Submit for review**
+
+> Google's review process typically takes **3–7 business days** for new public add-ons.
+
+Once approved, your add-on will appear on the Marketplace and any Gmail user can install it at [workspace.google.com/marketplace](https://workspace.google.com/marketplace).
 
 ---
 
@@ -173,7 +353,7 @@ Claude analyses the full email body and determines intent. Malware delivery is s
 
 ### Layer 3 — VirusTotal Score (max 30 points)
 
-Each URL or attachment hash flagged as malicious by at least one VirusTotal engine adds **+15 points**, capped at **30 points total** (i.e. 2 or more hits = maximum contribution).
+Each URL or attachment hash flagged as malicious by at least one VirusTotal engine adds **+15 points**, capped at **30 points total**.
 
 | Malicious VT hits | Points |
 |-------------------|--------|
@@ -282,15 +462,15 @@ Upwind_Observer/
 │   │   └── results.py        GET  /v1/results/{job_id}
 │   │
 │   └── utils/
-│       ├── email_parser.py   RFC 2822 raw email parsing
+│       ├── email_parser.py      RFC 2822 raw email parsing
 │       ├── security_signals.py  DMARC / SPF / DKIM extraction
-│       └── virustotal.py     VirusTotal API client (URLs + hashes)
+│       └── virustotal.py        VirusTotal API client (URLs + hashes)
 │
 ├── google_apps_script/
 │   ├── Code.gs               Gmail Add-on logic (submit + poll + render)
 │   └── appsscript.json       Add-on manifest + OAuth scopes
 │
-├── run.py                    Uvicorn entrypoint
+├── run.py                    Uvicorn entrypoint (local dev)
 ├── requirements.txt
 └── .env                      Secret config (gitignored)
 ```
@@ -301,15 +481,18 @@ Upwind_Observer/
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Add-on runtime | Google Apps Script | Gmail integration, card UI |
+| Add-on runtime | Google Apps Script | Gmail integration, sidebar card UI |
+| Marketplace | Google Workspace Marketplace | Public add-on distribution |
 | Web framework | FastAPI | Async REST API |
-| ASGI server | Uvicorn | Production-grade Python server |
+| ASGI server | Uvicorn | Production Python server |
+| Reverse proxy | nginx + Let's Encrypt | HTTPS termination on EC2 |
+| Cloud hosting | AWS EC2 (Ubuntu) | Always-on backend server |
+| Process manager | systemd | Auto-restart on crash/reboot |
 | Database | MongoDB Atlas + Motor | Async job storage |
 | AI | Anthropic Claude claude-sonnet-4-6 | Email intent classification |
 | Threat intel | VirusTotal API v3 | URL and file hash reputation |
-| HTTP client | httpx | Async HTTP requests to external APIs |
+| HTTP client | httpx | Async requests to external APIs |
 | Config | pydantic-settings | Type-safe environment variable loading |
-| Tunnelling | ngrok | Expose localhost to Google's servers |
 
 ---
 
